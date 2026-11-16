@@ -7,30 +7,29 @@ from supabase import Client, create_client
 
 app = FastAPI()
 
-# Permite que seu frontend faça requisições para esta API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Em produção, substitua pelo seu domínio na Vercel
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Variáveis de ambiente configuradas no painel da Vercel
-POLYGONSCAN_API_KEY = os.environ.get("POLYGONSCAN_API_KEY")
+# Atualizado para ler a ETHERSCAN_API_KEY
+ETHERSCAN_API_KEY = os.environ.get("ETHERSCAN_API_KEY")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get(
-    "SUPABASE_KEY"
-)  # Use a chave 'service_role' no backend
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-POLYGONSCAN_API_URL = "https://api.polygonscan.com/api"
+# Endpoint unificado V2 da Etherscan (suporta Polygon via chainid=137)
+ETHERSCAN_V2_URL = "https://api.etherscan.io/v2/api"
+POLYGON_CHAIN_ID = 137
+
 CONTRATOS_STABLECOINS = {
     "USDT": "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
     "USDC": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
 }
 
-# Cache simples em memória para evitar repetir chamadas da mesma data na mesma execução
 cache_cotacoes = {}
 
 
@@ -73,24 +72,26 @@ def sincronizar_carteira(carteira: str, token: str = "USDT"):
         )
 
     parametros = {
+        "chainid": POLYGON_CHAIN_ID,  # Identifica a rede Polygon na API V2
         "module": "account",
         "action": "tokentx",
         "contractaddress": contrato,
         "address": carteira,
         "page": 1,
-        "offset": 30,  # Mantém em 30 para rodar bem rápido dentro do limite da Vercel
+        "offset": 30,
         "sort": "desc",
-        "apikey": POLYGONSCAN_API_KEY,
+        "apikey": ETHERSCAN_API_KEY,
     }
 
     resposta = requests.get(
-        POLYGONSCAN_API_URL, params=parametros, timeout=10
+        ETHERSCAN_V2_URL, params=parametros, timeout=10
     ).json()
 
     if resposta.get("status") != "1":
         return {
             "status": "vazio",
             "mensagem": resposta.get("message"),
+            "detalhe": resposta.get("result"),
             "novas_transacoes": 0,
         }
 
@@ -119,7 +120,6 @@ def sincronizar_carteira(carteira: str, token: str = "USDT"):
             })
 
     if registros_para_salvar:
-        # Salva no Supabase evitando duplicatas pelo tx_hash
         supabase.table("transacoes_stablecoin").upsert(
             registros_para_salvar, on_conflict="tx_hash"
         ).execute()
