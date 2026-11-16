@@ -55,79 +55,62 @@ def obter_cotacao_usd_brl(data_unix: int) -> float:
     cache_cotacoes[data_str] = cotacao
     return cotacao
 
+from fastapi import FastAPI, Header, HTTPException
+# ... (mantenha as importações anteriores) ...
+
 
 @app.get("/api/sincronizar")
-def sincronizar_carteira(carteira: str, token: str = "USDT"):
-    token = token.upper()
-    contrato = CONTRATOS_STABLECOINS.get(token)
-
-    if not contrato:
+def sincronizar_carteira(
+    carteira: str,
+    token: str = "USDT",
+    authorization: str = Header(
+        None
+    ),  # Recebe "Bearer <access_token>" do Supabase Auth
+):
+    if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
-            status_code=400, detail="Token inválido. Use USDT ou USDC."
+            status_code=401, detail="Token de autenticação ausente."
         )
 
-    if not carteira.startswith("0x") or len(carteira) != 42:
-        raise HTTPException(
-            status_code=400, detail="Endereço de carteira Polygon inválido."
-        )
+    jwt_token = authorization.split(" ")[1]
 
-    parametros = {
-        "chainid": POLYGON_CHAIN_ID,  # Identifica a rede Polygon na API V2
-        "module": "account",
-        "action": "tokentx",
-        "contractaddress": contrato,
-        "address": carteira,
-        "page": 1,
-        "offset": 30,
-        "sort": "desc",
-        "apikey": ETHERSCAN_API_KEY,
-    }
+    # Valida o usuário diretamente no Supabase Auth usando o token enviado pelo frontend
+    user_response = supabase.auth.get_user(jwt_token)
+    if not user_response or not user_response.user:
+        raise HTTPException(status_code=401, detail="Sessão inválida.")
 
-    resposta = requests.get(
-        ETHERSCAN_V2_URL, params=parametros, timeout=10
-    ).json()
-
-    if resposta.get("status") != "1":
-        return {
-            "status": "vazio",
-            "mensagem": resposta.get("message"),
-            "detalhe": resposta.get("result"),
-            "novas_transacoes": 0,
-        }
-
+    user_id = user_response.user.id
     carteira_lower = carteira.lower()
-    registros_para_salvar = []
 
-    for tx in resposta["result"]:
-        if tx["to"].lower() == carteira_lower:
-            decimais = int(tx["tokenDecimal"])
-            valor_usd = int(tx["value"]) / (10**decimais)
-            timestamp = int(tx["timeStamp"])
-            data_iso = datetime.fromtimestamp(timestamp).isoformat()
+    # 1. Garante que a carteira está registrada para este usuário e obtém o carteira_id
+    res_carteira = (
+        supabase.table("carteiras_usuario")
+        .upsert(
+            {"user_id": user_id, "endereco_carteira": carteira_lower},
+            on_conflict="user_id,endereco_carteira",
+        )
+        .execute()
+    )
 
-            cotacao_brl = obter_cotacao_usd_brl(timestamp)
-            valor_brl = round(valor_usd * cotacao_brl, 2)
+    carteira_id = res_carteira.data[0]["id"]
 
-            registros_para_salvar.append({
-                "tx_hash": tx["hash"],
-                "carteira_destino": carteira_lower,
-                "remetente": tx["from"].lower(),
-                "token": token,
-                "valor_usd": round(valor_usd, 4),
-                "cotacao_brl": round(cotacao_brl, 4),
-                "valor_brl": valor_brl,
-                "data_transacao": data_iso,
-            })
+    # ... (mantenha a consulta à Etherscan V2 e cálculo de cotação exatamente iguais) ...
+
+    # No loop de montagem de `registros_para_salvar`, inclua `user_id` e `carteira_id`:
+    # registros_para_salvar.append({
+    #     "user_id": user_id,
+    #     "carteira_id": carteira_id,
+    #     "tx_hash": tx["hash"],
+    #     ...
+    # })
 
     if registros_para_salvar:
         supabase.table("transacoes_stablecoin").upsert(
-            registros_para_salvar, on_conflict="tx_hash"
+            registros_para_salvar, on_conflict="user_id,tx_hash"
         ).execute()
 
     return {
         "status": "sucesso",
-        "carteira": carteira_lower,
-        "token": token,
         "total_processado": len(registros_para_salvar),
         "dados": registros_para_salvar,
     }
