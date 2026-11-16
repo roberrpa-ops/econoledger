@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StableFlow — Gestor Financeiro Web3</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased">
+
+  <!-- TELA DE AUTENTICAÇÃO (LOGIN / CADASTRO) -->
+  <div id="auth-section" class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl">
+      <div class="mb-6 text-center">
+        <span class="inline-block px-3 py-1 text-xs font-semibold tracking-wider uppercase bg-emerald-500/10 text-emerald-400 rounded-full mb-2">
+          Polygon • USDT & USDC
+        </span>
+        <h1 class="text-2xl font-bold text-white">Gestor de Stablecoins</h1>
+        <p class="text-slate-400 text-sm mt-1">Controle fiscal e câmbio histórico automático</p>
+      </div>
+
+      <form id="auth-form" class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">E-mail</label>
+          <input type="email" id="email" required placeholder="voce@empresa.com"
+            class="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Senha</label>
+          <input type="password" id="password" required minlength="6" placeholder="Mínimo 6 caracteres"
+            class="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500" />
+        </div>
+
+        <div id="auth-feedback" class="hidden text-xs p-3 rounded-lg"></div>
+
+        <div class="grid grid-cols-2 gap-3 pt-2">
+          <button type="submit" id="btn-login"
+            class="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm rounded-lg transition cursor-pointer">
+            Entrar
+          </button>
+          <button type="button" id="btn-signup"
+            class="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-sm rounded-lg transition cursor-pointer">
+            Criar Conta
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- PAINEL PRINCIPAL (USUÁRIO AUTENTICADO) -->
+  <div id="dashboard-section" class="hidden max-w-6xl mx-auto p-4 md:p-8 space-y-6">
+    
+    <!-- Cabeçalho -->
+    <header class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-800 pb-5">
+      <div>
+        <h1 class="text-xl font-bold text-white flex items-center gap-2">
+          Gestor Financeiro Stablecoins
+          <span class="text-xs font-normal px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded">Polygon PoS</span>
+        </h1>
+        <p id="user-email-display" class="text-xs text-slate-400 mt-0.5"></p>
+      </div>
+      <button id="btn-logout" class="self-start sm:self-auto px-4 py-2 text-xs font-medium bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-slate-300 transition cursor-pointer">
+        Sair da Conta
+      </button>
+    </header>
+
+    <!-- Cards de Resumo -->
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+        <p class="text-xs text-slate-400">Total Recebido (USD)</p>
+        <p id="kpi-total-usd" class="text-2xl font-bold text-white mt-1">$ 0,00</p>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+        <p class="text-xs text-slate-400">Total Convertido na Data (BRL)</p>
+        <p id="kpi-total-brl" class="text-2xl font-bold text-emerald-400 mt-1">R$ 0,00</p>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+        <p class="text-xs text-slate-400">Transações Registradas</p>
+        <p id="kpi-total-tx" class="text-2xl font-bold text-white mt-1">0</p>
+      </div>
+    </section>
+
+    <!-- Cadastro e Sincronização de Carteiras -->
+    <section class="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-5">
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div class="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Apelido da Carteira</label>
+            <input type="text" id="wallet-alias" placeholder="Ex: Recebimentos Exterior"
+              class="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500" />
+          </div>
+          <div class="md:col-span-2">
+            <label class="block text-xs text-slate-400 mb-1">Endereço Público Polygon (0x...)</label>
+            <input type="text" id="wallet-address" placeholder="0x0000000000000000000000000000000000000000"
+              class="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm font-mono text-white focus:outline-none focus:border-emerald-500" />
+          </div>
+        </div>
+        <button id="btn-add-wallet"
+          class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-lg transition cursor-pointer whitespace-nowrap">
+          + Salvar Carteira
+        </button>
+      </div>
+
+      <!-- Lista de Carteiras Salvas -->
+      <div class="border-t border-slate-800 pt-4">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Suas Carteiras Monitoradas</h2>
+          <div class="flex items-center gap-2 text-xs text-slate-400">
+            <span>Token para sincronizar:</span>
+            <select id="sync-token-select" class="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-white focus:outline-none">
+              <option value="USDT">USDT</option>
+              <option value="USDC">USDC</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="wallets-list" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <!-- Preenchido via JS -->
+        </div>
+      </div>
+
+      <!-- Status da Sincronização -->
+      <div id="sync-status" class="hidden text-xs p-3 rounded-lg bg-slate-950 border border-slate-800 text-slate-300"></div>
+    </section>
+
+    <!-- Tabela de Recebimentos -->
+    <section class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+      <div class="p-5 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 class="text-base font-semibold text-white">Histórico de Recebimentos</h2>
+          <p class="text-xs text-slate-400">Valores convertidos pela cotação oficial USD/BRL da data da transação</p>
+        </div>
+        <button id="btn-refresh-table" class="px-3.5 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg transition cursor-pointer">
+          Atualizar Tabela
+        </button>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="border-b border-slate-800 text-xs uppercase text-slate-400 bg-slate-950/50">
+              <th class="py-3 px-4">Data / Hora</th>
+              <th class="py-3 px-4">Token</th>
+              <th class="py-3 px-4 text-right">Valor Recebido</th>
+              <th class="py-3 px-4 text-right">Cotação USD</th>
+              <th class="py-3 px-4 text-right">Total em BRL</th>
+              <th class="py-3 px-4">Remetente</th>
+              <th class="py-3 px-4 text-center">Hash</th>
+            </tr>
+          </thead>
+          <tbody id="transactions-tbody" class="divide-y divide-slate-800/70 text-sm">
+            <tr>
+              <td colspan="7" class="py-8 text-center text-slate-500 text-xs">
+                Nenhuma transação encontrada. Cadastre uma carteira e clique em Sincronizar.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // =========================================================================
+    // CONFIGURAÇÃO DO SUPABASE (Substitua pelas chaves do seu projeto)
+    // =========================================================================
+    const SUPABASE_URL = "https://ubtgyzcdvumfxgujpshz.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_eH09_dM0w0DreGw8JOx7mg_P1w3rZGC";
+
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // Elementos de UI
+    const authSection = document.getElementById("auth-section");
+    const dashboardSection = document.getElementById("dashboard-section");
+    const authFeedback = document.getElementById("auth-feedback");
+    const syncStatus = document.getElementById("sync-status");
+
+    let currentSession = null;
+
+    // Formatação de moeda
+    const fmtBRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+    const fmtUSD = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+
+    function showAuthMessage(msg, isError = true) {
+      authFeedback.textContent = msg;
+      authFeedback.className = `text-xs p-3 rounded-lg ${
+        isError ? "bg-red-500/10 text-red-400 border border-red-500/20" : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+      }`;
+      authFeedback.classList.remove("hidden");
+    }
+
+    function showSyncStatus(msg, type = "info") {
+      const styles = {
+        info: "bg-slate-950 border-slate-800 text-slate-300",
+        success: "bg-emerald-500/10 border-emerald-500/30 text-emerald-300",
+        error: "bg-red-500/10 border-red-500/30 text-red-300"
+      };
+      syncStatus.className = `text-xs p-3 rounded-lg border ${styles[type]}`;
+      syncStatus.textContent = msg;
+      syncStatus.classList.remove("hidden");
+    }
+
+    // =========================================================================
+    // CONTROLE DE SESSÃO (SUPABASE AUTH)
+    // =========================================================================
+    sb.auth.onAuthStateChange((_event, session) => {
+      currentSession = session;
+      if (session) {
+        authSection.classList.add("hidden");
+        dashboardSection.classList.remove("hidden");
+        document.getElementById("user-email-display").textContent = session.user.email;
+        carregarCarteiras();
+        carregarTransacoes();
+      } else {
+        authSection.classList.remove("hidden");
+        dashboardSection.classList.add("hidden");
+      }
+    });
+
+    // Login
+    document.getElementById("auth-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) showAuthMessage("Erro ao entrar: " + error.message, true);
+    });
+
+    // Cadastro
+    document.getElementById("btn-signup").addEventListener("click", async () => {
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+
+      if (!email || password.length < 6) {
+        showAuthMessage("Informe um e-mail válido e senha com no mínimo 6 caracteres.", true);
+        return;
+      }
+
+      const { data, error } = await sb.auth.signUp({ email, password });
+      if (error) {
+        showAuthMessage("Erro ao cadastrar: " + error.message, true);
+      } else if (data.user && !data.session) {
+        showAuthMessage("Conta criada! Verifique seu e-mail para confirmar o cadastro antes de entrar.", false);
+      } else {
+        showAuthMessage("Conta criada com sucesso!", false);
+      }
+    });
+
+    // Logout
+    document.getElementById("btn-logout").addEventListener("click", async () => {
+      await sb.auth.signOut();
+    });
+
+    // =========================================================================
+    // GESTÃO DE CARTEIRAS (`carteiras_usuario`)
+    // =========================================================================
+    document.getElementById("btn-add-wallet").addEventListener("click", async () => {
+      const apelido = document.getElementById("wallet-alias").value.trim() || "Carteira Principal";
+      const endereco = document.getElementById("wallet-address").value.trim().toLowerCase();
+
+      if (!endereco.startsWith("0x") || endereco.length !== 42) {
+        showSyncStatus("Endereço inválido. Digite um endereço Polygon começando com 0x (42 caracteres).", "error");
+        return;
+      }
+
+      const { error } = await sb.from("carteiras_usuario").insert({
+        user_id: currentSession.user.id,
+        apelido: apelido,
+        endereco_carteira: endereco
+      });
+
+      if (error) {
+        showSyncStatus("Erro ao salvar carteira: " + error.message, "error");
+      } else {
+        document.getElementById("wallet-alias").value = "";
+        document.getElementById("wallet-address").value = "";
+        showSyncStatus("Carteira salva com sucesso! Clique em Sincronizar para buscar o histórico.", "success");
+        carregarCarteiras();
+      }
+    });
+
+    async function carregarCarteiras() {
+      const { data, error } = await sb
+        .from("carteiras_usuario")
+        .select("*")
+        .order("criado_em", { ascending: false });
+
+      const container = document.getElementById("wallets-list");
+      if (error || !data || data.length === 0) {
+        container.innerHTML = `<p class="text-xs text-slate-500 col-span-2">Nenhuma carteira cadastrada ainda.</p>`;
+        return;
+      }
+
+      container.innerHTML = data.map(w => `
+        <div class="flex items-center justify-between gap-3 p-3.5 bg-slate-950 border border-slate-800 rounded-lg">
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-white truncate">${w.apelido}</p>
+            <p class="text-xs font-mono text-slate-400 truncate">${w.endereco_carteira}</p>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button onclick="sincronizarCarteira('${w.endereco_carteira}', this)"
+              class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded-md transition cursor-pointer">
+              Sincronizar
+            </button>
+            <button onclick="removerCarteira('${w.id}')" title="Remover carteira"
+              class="px-2.5 py-1.5 bg-slate-900 hover:bg-red-950/60 text-slate-400 hover:text-red-400 border border-slate-800 text-xs rounded-md transition cursor-pointer">
+              ✕
+            </button>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    async function removerCarteira(id) {
+      if (!confirm("Remover esta carteira também apagará o histórico vinculado a ela. Continuar?")) return;
+      await sb.from("carteiras_usuario").delete().eq("id", id);
+      carregarCarteiras();
+      carregarTransacoes();
+    }
+
+    // =========================================================================
+    // CHAMADA AO BACKEND PYTHON NA VERCEL (`/api/sincronizar`)
+    // =========================================================================
+    async function sincronizarCarteira(endereco, btnElement) {
+      const tokenSelecionado = document.getElementById("sync-token-select").value;
+      const textoOriginal = btnElement.textContent;
+
+      btnElement.disabled = true;
+      btnElement.textContent = "Buscando...";
+      showSyncStatus(`Consultando transações de ${tokenSelecionado} na rede Polygon para ${endereco.slice(0, 8)}...`, "info");
+
+      try {
+        // Obtém o access_token atualizado da sessão do Supabase Auth
+        const { data: { session } } = await sb.auth.getSession();
+        const accessToken = session?.access_token;
+
+        const url = `/api/sincronizar?carteira=${encodeURIComponent(endereco)}&token=${encodeURIComponent(tokenSelecionado)}`;
+        const response = await fetch(url, {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "Content-Type": "application/json"
+          }
+        });
+
+        const resultado = await response.json();
+
+        if (!response.ok) {
+          throw new Error(resultado.detail || "Falha na comunicação com a API.");
+        }
+
+        if (resultado.status === "vazio") {
+          showSyncStatus(`Nenhuma transação de entrada encontrada para ${tokenSelecionado} nessa carteira.`, "info");
+        } else {
+          showSyncStatus(`Sincronização concluída! ${resultado.total_processado} transação(ões) processada(s) e atualizada(s).`, "success");
+          await carregarTransacoes();
+        }
+      } catch (err) {
+        showSyncStatus("Erro na sincronização: " + err.message, "error");
+      } finally {
+        btnElement.disabled = false;
+        btnElement.textContent = textoOriginal;
+      }
+    }
+
+    // =========================================================================
+    // LEITURA DA TABELA DE RECEBIMENTOS (`transacoes_stablecoin`)
+    // =========================================================================
+    document.getElementById("btn-refresh-table").addEventListener("click", carregarTransacoes);
+
+    async function carregarTransacoes() {
+      const { data, error } = await sb
+        .from("transacoes_stablecoin")
+        .select("*")
+        .order("data_transacao", { ascending: false });
+
+      const tbody = document.getElementById("transactions-tbody");
+
+      if (error || !data || data.length === 0) {
+        document.getElementById("kpi-total-usd").textContent = "$ 0.00";
+        document.getElementById("kpi-total-brl").textContent = "R$ 0,00";
+        document.getElementById("kpi-total-tx").textContent = "0";
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" class="py-8 text-center text-slate-500 text-xs">
+              Nenhuma transação registrada ainda.
+            </td>
+          </tr>`;
+        return;
+      }
+
+      // Cálculo dos KPIs
+      let somaUSD = 0;
+      let somaBRL = 0;
+
+      tbody.innerHTML = data.map(tx => {
+        somaUSD += Number(tx.valor_usd);
+        somaBRL += Number(tx.valor_brl);
+
+        const dataFormatada = new Date(tx.data_transacao).toLocaleString("pt-BR", {
+          day: "2-digit", month: "2-digit", year: "numeric",
+          hour: "2-digit", minute: "2-digit"
+        });
+
+        const remetenteCurto = `${tx.remetente.slice(0, 6)}...${tx.remetente.slice(-4)}`;
+        const hashCurto = `${tx.tx_hash.slice(0, 8)}...`;
+
+        return `
+          <tr class="hover:bg-slate-800/40 transition">
+            <td class="py-3 px-4 text-xs text-slate-300 whitespace-nowrap">${dataFormatada}</td>
+            <td class="py-3 px-4">
+              <span class="px-2 py-0.5 text-xs font-semibold rounded ${
+                tx.token === "USDT" ? "bg-teal-500/10 text-teal-400" : "bg-blue-500/10 text-blue-400"
+              }">${tx.token}</span>
+            </td>
+            <td class="py-3 px-4 text-right font-mono text-white">${fmtUSD.format(tx.valor_usd)}</td>
+            <td class="py-3 px-4 text-right font-mono text-xs text-slate-400">R$ ${Number(tx.cotacao_brl).toFixed(4)}</td>
+            <td class="py-3 px-4 text-right font-mono font-semibold text-emerald-400">${fmtBRL.format(tx.valor_brl)}</td>
+            <td class="py-3 px-4 font-mono text-xs text-slate-400">${remetenteCurto}</td>
+            <td class="py-3 px-4 text-center">
+              <a href="https://polygonscan.com/tx/${tx.tx_hash}" target="_blank" rel="noopener noreferrer"
+                class="text-xs font-mono text-emerald-400 hover:underline">
+                ${hashCurto} ↗
+              </a>
+            </td>
+          </tr>
+        `;
+      }).join("");
+
+      document.getElementById("kpi-total-usd").textContent = fmtUSD.format(somaUSD);
+      document.getElementById("kpi-total-brl").textContent = fmtBRL.format(somaBRL);
+      document.getElementById("kpi-total-tx").textContent = data.length;
+    }
+  </script>
+</body>
+</html>
